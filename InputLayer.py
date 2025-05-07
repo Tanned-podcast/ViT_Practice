@@ -1,6 +1,7 @@
 #Cursorの使い方：Ctrl+Lでチャット，tabで補完，Ctrl+Kで生成 普通にTabで空白挿入したいときは補完をEscでキャンセルしてからTab
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 batch_size = 2
 channels = 3
@@ -54,4 +55,70 @@ class VitInputLayer():
 input_layer = VitInputLayer()
 z0 = input_layer.forward(x)
 
+
+class MultiHeadSelfAttention(nn.Module):
+    def __init__(self, emb_dim: int = 384, num_heads: int = 6, dropout: float=0):
+        super(MultiHeadSelfAttention, self).__init__()
+        self.emb_dim = emb_dim
+        self.num_heads = num_heads
+        self.head_dim = emb_dim // num_heads #D/h
+        self.sqrt_dh = self.head_dim ** -0.5
+        self.dropout = nn.Dropout(dropout)
+
+        #クエリ，キー，バリュー行列に変換するための重み
+        self.w_q = nn.Linear(emb_dim, emb_dim, bias=False)
+        self.w_k = nn.Linear(emb_dim, emb_dim, bias=False)
+        self.w_v = nn.Linear(emb_dim, emb_dim, bias=False)
+
+        #最後分割したヘッドを結合しなおして，出力行列に変換するための重み
+        self.w_o = nn.Sequential(nn.Linear(emb_dim, emb_dim), nn.Dropout(dropout))
+
+    def forward(self, z: torch.Tensor) -> torch.Tensor:
+        #zが入力行列 サイズ取得
+        batch_size, num_patch, _ = z.shape
+
+        #埋め込み
+        q = self.w_q(z)
+        k = self.w_k(z)
+        v = self.w_v(z)
+
+        #ヘッド分割　バッチサイズ，パッチの数，ヘッド数，ベクトルの長さの順
+        q = q.view(batch_size, num_patch, self.num_heads, self.head_dim)
+        k = k.view(batch_size, num_patch, self.num_heads, self.head_dim)
+        v = v.view(batch_size, num_patch, self.num_heads, self.head_dim)
+
+        print(q.shape)
+
+        #transposeでバッチサイズ，ヘッド数，パッチの数，ベクトルの長さの順にする
+        q = q.transpose(1, 2)
+        k = k.transpose(1, 2)
+        v = v.transpose(1, 2)
+
+        #転置してqkからAttention Weightを計算　バッチサイズ，ヘッド数，パッチの数，パッチの数の順になる
+        k_t = k.transpose(2, 3)
+        attn = F.softmax(torch.matmul(q, k_t) / self.sqrt_dh, dim=-1)
+        print(attn.shape)
+        
+        #ドロップアウト
+        attn = self.dropout(attn)
+
+        #Attention Weightとバリュー行列の行列積 バッチサイズ，ヘッド数，パッチの数，ベクトルの長さの順になる
+        out = torch.matmul(attn, v)
+        print(out.shape)
+
+        #transposeでバッチサイズ，パッチの数，ヘッド数，ベクトルの長さの順にする
+        #reshapeでヘッド分割してたのを結合　バッチサイズ，パッチの数，埋め込み後のベクトル長さの順にする
+        out = out.transpose(1, 2)
+        out=out.reshape(batch_size, -1, self.emb_dim)
+        print(out.shape)
+
+        #最後の重みをかけて出力行列に変換
+        out=self.w_o(out)
+        print(out.shape)
+
+        return out
+
+
+mhsa=MultiHeadSelfAttention()
+out=mhsa.forward(z0)
 
