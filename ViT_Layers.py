@@ -10,7 +10,10 @@ width = 32
 x = torch.randn(batch_size, channels, height, width)
 
 #埋め込み後のベクトルの長さemb_dimはモデルの設計者が決めるんか？
-class VitInputLayer():
+#入力画像に対し下処理を行うInput Layer
+#nn.Moduleを継承しておかないと，Pytorchのニューラルネットワークのパーツとして呼び出せない
+#nn.Moduleのルールに従って，forwardメソッドを定義しておく
+class VitInputLayer(nn.Module):
     def __init__ (self, num_patch_row: int = 2, in_channels: int = 3, emb_dim: int = 384, img_size: int = 32):
         super(VitInputLayer, self).__init__()
         self.num_patch_row = num_patch_row
@@ -34,21 +37,21 @@ class VitInputLayer():
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         #バッチサイズ，チャンネル数，高さ，幅　=> バッチサイズ，埋め込み後のベクトル長さ，パッチの数（縦，横）になる
         z0 = self.patch_emb_layer(x)
-        print(z0.shape)
+        #print(z0.shape)
 
         #先にConvくぐらしといて後からFlatten処理を行う　パッチの数が１次元になる
         #transpose(1, 2)でバッチサイズとパッチの数を入れ替える　バッチサイズ，パッチの数，埋め込み後のベクトル長さになる
         z0 = z0.flatten(2).transpose(1, 2)
-        print(z0.shape)
+        #print(z0.shape)
 
         #クラストークンのバッチサイズを揃え，z0と結合
         cls_token = self.cls_token.expand(x.shape[0], -1, -1)
         z0 = torch.cat([cls_token, z0], dim=1)
-        print(z0.shape)
+        #print(z0.shape)
 
         #位置埋め込みを加算
         z0 = z0 + self.pos_embedding
-        print(z0.shape)
+        #print(z0.shape)
 
         return z0
 
@@ -87,7 +90,7 @@ class MultiHeadSelfAttention(nn.Module):
         k = k.view(batch_size, num_patch, self.num_heads, self.head_dim)
         v = v.view(batch_size, num_patch, self.num_heads, self.head_dim)
 
-        print(q.shape)
+        #print(q.shape)
 
         #transposeでバッチサイズ，ヘッド数，パッチの数，ベクトルの長さの順にする
         q = q.transpose(1, 2)
@@ -104,17 +107,17 @@ class MultiHeadSelfAttention(nn.Module):
 
         #Attention Weightとバリュー行列の行列積 バッチサイズ，ヘッド数，パッチの数，ベクトルの長さの順になる
         out = torch.matmul(attn, v)
-        print(out.shape)
+        #print(out.shape)
 
         #transposeでバッチサイズ，パッチの数，ヘッド数，ベクトルの長さの順にする
         #reshapeでヘッド分割してたのを結合　バッチサイズ，パッチの数，埋め込み後のベクトル長さの順にする
         out = out.transpose(1, 2)
         out=out.reshape(batch_size, -1, self.emb_dim)
-        print(out.shape)
+        #print(out.shape)
 
         #最後の重みをかけて出力行列に変換
         out=self.w_o(out)
-        print(out.shape)
+        #print(out.shape)
 
         return out
 
