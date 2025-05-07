@@ -122,3 +122,33 @@ class MultiHeadSelfAttention(nn.Module):
 mhsa=MultiHeadSelfAttention()
 out=mhsa.forward(z0)
 
+
+#MHSAまで含めたEncoderBlockを作っていく
+class ViTEncoderBlock(nn.Module):
+    def __init__(self, emb_dim: int = 384, num_heads: int = 8, hidden_dim: int = 384*4, dropout: float=0):
+        super(ViTEncoderBlock, self).__init__()
+
+        #EncoderBlock内のレイヤー組み立て：LayerNorm，MultiHeadSelfAttention，LayerNorm，MLP
+        self.ln1=nn.LayerNorm(emb_dim)
+        self.mha=MultiHeadSelfAttention(emb_dim, num_heads, dropout)
+        self.ln2=nn.LayerNorm(emb_dim)
+        self.mlp=nn.Sequential(
+            nn.Linear(emb_dim, hidden_dim),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, emb_dim),
+            nn.Dropout(dropout)
+        )
+
+    def forward(self, z: torch.Tensor) -> torch.Tensor:
+        #zがInput Layerからの入力行列 これを作ったレイヤーに通す
+        #途中でResidual Blockが２つあるので，２回に分けて処理する（かしこい）
+        z=z+self.mha(self.ln1(z))
+        z=z+self.mlp(self.ln2(z))
+
+        return z
+
+vit_encoder_block=ViTEncoderBlock()
+z=vit_encoder_block.forward(z0)
+print(z.shape)
+
